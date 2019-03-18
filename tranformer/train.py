@@ -18,10 +18,10 @@ class Graph():
         self.graph = tf.Graph()
         with self.graph.as_default():
             if is_training:
-                self.x,self.y, self.num_batch = get_batch_data() # (N, T), self.x_pos
+                self.x,self.x_pos,self.y, self.num_batch = get_batch_data() # (N, T), self.x_pos
             else: # inference
                 self.x = tf.placeholder(tf.int32, shape=(None, hp.maxlen))
-#                 self.x_pos = tf.placeholder(tf.int32, shape=(None, hp.maxlen))
+                self.x_pos = tf.placeholder(tf.int32, shape=(None, hp.maxlen))
                 self.y = tf.placeholder(tf.int32, shape=(None, hp.maxlen))
 
             # define decoder inputs
@@ -41,7 +41,7 @@ class Graph():
                                       scale=True,
                                       scope="enc_embed")
                 
-
+                print(self.enc.shape)
                 key_masks = tf.expand_dims(tf.sign(tf.reduce_sum(tf.abs(self.enc), axis=-1)), -1)
                 
                 ## Positional Encoding
@@ -83,7 +83,12 @@ class Graph():
                         
                         ### Feed Forward
                         self.enc = feedforward(self.enc, num_units=[4*hp.hidden_units, hp.hidden_units])
-                
+            self.enc+=embedding1(self.x_pos, #词性嵌入
+                                  vocab_size=len(pos2idx), 
+                                  num_units=hp.hidden_units, 
+                                  scale=True,
+                                  scope="pos_embed")
+            print(self.enc.shape)
             # Decoder
             with tf.variable_scope("decoder"):
                 ## Embedding
@@ -98,7 +103,7 @@ class Graph():
                 ## Positional Encoding
                 if hp.sinusoid:
                     self.dec += positional_encoding(self.decoder_inputs,
-                                      vocab_size=hp.maxlen, 
+#                                       vocab_size=hp.maxlen, 
                                       num_units=hp.hidden_units, 
                                       zero_pad=False, 
                                       scale=False,
@@ -143,11 +148,12 @@ class Graph():
                         ## Feed Forward
                         self.dec = feedforward(self.dec, num_units=[4*hp.hidden_units, hp.hidden_units])
             ##pos Encoder
-#             self.dec += embedding(self.x_pos, 
-#                                       vocab_size=len(pos2idx), 
-#                                       num_units=hp.hidden_units, 
-#                                       scale=True,
-#                                       scope="pos1_embed")        
+            self.dec += embedding1(self.x_pos, 
+                                      vocab_size=len(pos2idx), 
+                                      num_units=hp.hidden_units, 
+                                      scale=True,
+                                      scope="pos1_embed")
+            print(self.dec)       
             # Final linear projection
             self.logits = tf.layers.dense(self.dec, len(en2idx))
             self.preds = tf.to_int32(tf.arg_max(self.logits, dimension=-1))
@@ -175,7 +181,8 @@ if __name__ == '__main__':
     de2idx, idx2de = load_de_vocab()
     en2idx, idx2en = load_en_vocab()
     pos2idx,idx2pos= load_pos_vocab()
-    
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
     # Construct graph
     g = Graph("train"); print("Graph loaded")
     
@@ -183,7 +190,7 @@ if __name__ == '__main__':
     sv = tf.train.Supervisor(graph=g.graph, 
                              logdir=hp.logdir,
                              save_model_secs=0)
-    with sv.managed_session() as sess:
+    with sv.managed_session(config=config) as sess:
         for epoch in range(1, hp.num_epochs+1): 
             if sv.should_stop(): break
             for step in tqdm(range(g.num_batch), total=g.num_batch, ncols=70, leave=False, unit='b'):
