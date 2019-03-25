@@ -14,33 +14,54 @@ import platform
 import json
 raw_data_file=['./data/train_data.json','./data/dev_data.json']
 def tag_data(raw_data_file,tag_train_data): #bio标记数据
-    with codecs.open(raw_data_file,'r',encoding='utf-8') as f:
+    with open(raw_data_file,'r',encoding='utf-8') as f:
         data = [json.loads(i) for i in f.readlines()]
         for line in data:#遍历每一行
             text=line['text']
+            text_list=list(text)
+#             print(text_list)
+            word_dic=[]#初始化BIO tag
+            for j in text_list:
+                if j!='《' and j!='》':
+                    word_dic.append('O')
+                else:
+                    word_dic.append('o-tag')
             spo_bj={}#obj字典
             for i in line['spo_list']:#将实体类型以及实体对都先加入临时字典
                 spo_bj[i['object_type']]=i['object']
                 spo_bj[i['subject_type']]=i['subject']
             for k,v in spo_bj.items():
-                print(k,v)
+#                 print(k,v)
+#                 print(text)
                 start_pst=text.find(v)
-#                 print(text[start_pst:len(v)-1])
-                print(start_pst)
-                
-            
-        
-            
-        
-        
+#                 print(text[start_pst:len(v)+start_pst])               
+#                 print(start_pst)
+                word_dic[start_pst]='B-'+str(k)
+                for m in range(start_pst+1,len(v)+start_pst):
+                    word_dic[m]='I-'+str(k)
+#             print(word_dic)
+            with codecs.open(tag_train_data,'a',encoding='utf-8') as f:
+                for i in range(0,len(text_list)):
+                    f.write(text[i]+' '+word_dic[i]+'\r\n')
+                f.write('\r\n\r\n')     
 def load_data():
-    train = _parse_data(open('data/train_data.data', 'rb'))
-    test = _parse_data(open('data/test_data.data', 'rb'))
-
-    word_counts = Counter(row[0].lower() for sample in train for row in sample)
+    schema_path='./data/all_50_schemas'
+    train = _parse_data(open('./data/train_data_1.data', 'rb'))
+    test = _parse_data(open('./data/test_data_1.data', 'rb'))
+    word_counts = Counter(row[0] for sample in train for row in sample if sample)
     vocab = [w for w, f in iter(word_counts.items()) if f >= 2]
-    chunk_tags = ['O', 'B-PER', 'I-PER', 'B-LOC', 'I-LOC', "B-ORG", "I-ORG"]
-
+    with codecs.open(schema_path,'r',encoding='utf-8') as f:
+        data = [json.loads(i) for i in f.readlines()]
+        tags=[]
+        for line in data:
+            tags.append('B-'+line["object_type"])
+            tags.append('I-'+line["object_type"])
+            tags.append('B-'+line['subject_type'])
+            tags.append('I-'+line['subject_type'])
+        tags.append('O')
+        tags.append('o-tag')
+        chunk_tags=list(set(tags))
+        print(chunk_tags)
     # save initial config data
     with open('model/config.pkl', 'wb') as outp:
         pickle.dump((vocab, chunk_tags), outp)
@@ -65,7 +86,6 @@ def _parse_data(fh):
             string.strip().split(split_text + split_text)]
     fh.close()
     return data
-
 
 def _process_data(data, vocab, chunk_tags, maxlen=None, onehot=False):
     if maxlen is None:
@@ -93,4 +113,4 @@ def process_data(data, vocab, maxlen=100):
     x = pad_sequences([x], maxlen)  # left padding
     return x, length
 
-tag_data('./data/dev_data.json','../data')
+tag_data('./data/train_data.json','./data/train_data_1.data')
